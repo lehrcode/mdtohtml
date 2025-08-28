@@ -3,8 +3,8 @@ package main
 import (
 	"bytes"
 	_ "embed"
-	"flag"
 	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
+	"github.com/alecthomas/kingpin/v2"
 	"github.com/yuin/goldmark"
 	highlighting "github.com/yuin/goldmark-highlighting/v2"
 	"github.com/yuin/goldmark/extension"
@@ -12,21 +12,22 @@ import (
 	"github.com/yuin/goldmark/renderer/html"
 	"html/template"
 	"log"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
 type Document struct {
-	Title  string
-	Values url.Values
-	Body   template.HTML
+	Title          string
+	ExtraVariables map[string]string
+	Stylesheets    []string
+	Body           template.HTML
 }
 
 var (
+	inputFiles     []string
 	outputFilename string
-	document       Document
+	document       = Document{ExtraVariables: make(map[string]string)}
 
 	//go:embed template.gohtml
 	outputTemplateSource   string
@@ -35,24 +36,13 @@ var (
 )
 
 func main() {
-	var valuesString string
-	flag.StringVar(&valuesString, "e", "lang=en", "extra values")
-	flag.StringVar(&outputFilename, "o", "", "output filename")
-	flag.StringVar(&document.Title, "t", "", "document title")
-	flag.StringVar(&outputTemplateFilename, "m", "", "html template")
-
-	flag.Parse()
-
-	if len(flag.Args()) < 1 {
-		log.Fatal("missing markdown file")
-	}
-
-	if v, err := url.ParseQuery(valuesString); err != nil {
-		log.Fatal(err)
-	} else {
-		document.Values = v
-		log.Printf("Extra values: %#v\n", document.Values)
-	}
+	kingpin.Flag("variable", "extra template variable").Short('e').StringMapVar(&document.ExtraVariables)
+	kingpin.Flag("stylesheet", "stylesheet uri").Short('s').StringsVar(&document.Stylesheets)
+	kingpin.Flag("output", "output filename").Short('o').StringVar(&outputFilename)
+	kingpin.Flag("title", "document title").Short('t').StringVar(&document.Title)
+	kingpin.Flag("template", "html template").Short('m').StringVar(&outputTemplateSource)
+	kingpin.Arg("md", "markdown filename").Required().ExistingFilesVar(&inputFiles)
+	kingpin.Parse()
 
 	if outputTemplateFilename != "" {
 		log.Printf("Output template filename: %s\n", outputTemplateFilename)
@@ -83,7 +73,7 @@ func main() {
 	)
 
 	var convertedHtml bytes.Buffer
-	for _, inputFilename := range flag.Args() {
+	for _, inputFilename := range inputFiles {
 		if inputBytes, err := os.ReadFile(inputFilename); err == nil {
 			if err := md.Convert(inputBytes, &convertedHtml); err != nil {
 				log.Fatal(err)
@@ -97,7 +87,7 @@ func main() {
 		log.Fatal(err)
 	}
 	if outputFilename == "" {
-		outputFilename = strings.TrimSuffix(filepath.Base(flag.Arg(0)), filepath.Ext(flag.Arg(0))) + ".html"
+		outputFilename = strings.TrimSuffix(filepath.Base(inputFiles[0]), filepath.Ext(inputFiles[0])) + ".html"
 	}
 
 	if err := os.WriteFile(outputFilename, finalHtml.Bytes(), 0644); err != nil {

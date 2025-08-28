@@ -1,16 +1,16 @@
 <!DOCTYPE html>
-<html lang="{{ if .Values.Has "lang" }}{{ .Values.Get "lang" }}{{ else }}en{{ end }}">
+<html lang="{{ if .ExtraVariables.lang }}{{ .ExtraVariables.lang }}{{ else }}en{{ end }}">
 <head>
     <meta charset="UTF-8">
     <meta name="robots" content="nofollow,noarchive">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-{{- if .Values.Has "author" }}
-    <meta name="author" content="{{ .Values.Get "author" }}">
-{{- end -}}
+{{- if .ExtraVariables.author }}
+    <meta name="author" content="{{ .ExtraVariables.author }}">
+{{- end }}
 {{- with .Title }}
     <title>{{ . }}</title>
-{{- end -}}
-{{- range .Values.stylesheet }}
+{{- end }}
+{{- range .Stylesheets }}
     <link rel="stylesheet" href="{{ . }}">
 {{- else }}
     <style>
@@ -76,8 +76,8 @@
         body { background-color: #ffffff; color: #000000; font-family: sans-serif }
     </style>
 {{ end -}}
-{{- if .Values.Has "icon" }}
-    <link rel="icon" type="image/x-icon" href="{{ .Values.Get "icon" }}">
+{{- if .ExtraVariables.icon }}
+    <link rel="icon" type="image/x-icon" href="{{ .ExtraVariables.icon }}">
 {{ end -}}
 </head>
 <body>
