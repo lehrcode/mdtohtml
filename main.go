@@ -2,9 +2,13 @@ package main
 
 import (
 	"bytes"
+	"context"
 	_ "embed"
+	"fmt"
 	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
 	"github.com/alecthomas/kingpin/v2"
+	"github.com/chromedp/cdproto/page"
+	"github.com/chromedp/chromedp"
 	"github.com/yuin/goldmark"
 	highlighting "github.com/yuin/goldmark-highlighting/v2"
 	"github.com/yuin/goldmark/extension"
@@ -33,6 +37,7 @@ var (
 	outputTemplateSource   string
 	outputTemplateFilename string
 	outputTemplate         *template.Template
+	printToPdf             bool
 )
 
 func main() {
@@ -41,6 +46,7 @@ func main() {
 	kingpin.Flag("output", "output filename").Short('o').StringVar(&outputFilename)
 	kingpin.Flag("title", "document title").Short('t').StringVar(&document.Title)
 	kingpin.Flag("template", "html template").Short('m').StringVar(&outputTemplateSource)
+	kingpin.Flag("pdf", "print to pdf using Chrome").BoolVar(&printToPdf)
 	kingpin.Arg("md", "markdown filename").Required().ExistingFilesVar(&inputFiles)
 	kingpin.Parse()
 
@@ -87,10 +93,48 @@ func main() {
 		log.Fatal(err)
 	}
 	if outputFilename == "" {
-		outputFilename = strings.TrimSuffix(filepath.Base(inputFiles[0]), filepath.Ext(inputFiles[0])) + ".html"
+		outputFilename = strings.TrimSuffix(filepath.Base(inputFiles[0]), filepath.Ext(inputFiles[0]))
+		if printToPdf {
+			outputFilename += ".pdf"
+		} else {
+			outputFilename += ".html"
+		}
 	}
 
-	if err := os.WriteFile(outputFilename, finalHtml.Bytes(), 0644); err != nil {
-		log.Fatal(err)
+	if printToPdf {
+		var tempFilename string
+		if f, err := os.CreateTemp("", "*.html"); err != nil {
+			log.Fatal(err)
+		} else {
+			tempFilename = f.Name()
+			defer os.Remove(tempFilename)
+			log.Printf("Writing temporary file: %s", tempFilename)
+			f.Write(finalHtml.Bytes())
+			f.Close()
+		}
+		var pdfBytes []byte
+		ctx, cancel := chromedp.NewContext(context.Background())
+		defer cancel()
+		if err := chromedp.Run(ctx,
+			chromedp.Navigate(fmt.Sprintf("file://%s", tempFilename)),
+			chromedp.ActionFunc(func(ctx context.Context) error {
+				var err error
+				pdfBytes, _, err = page.PrintToPDF().
+					WithDisplayHeaderFooter(false).
+					WithPrintBackground(true).
+					WithPreferCSSPageSize(true).
+					Do(ctx)
+				return err
+			}),
+		); err != nil {
+			log.Fatal(err)
+		}
+		if err := os.WriteFile(outputFilename, pdfBytes, 0644); err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		if err := os.WriteFile(outputFilename, finalHtml.Bytes(), 0644); err != nil {
+			log.Fatal(err)
+		}
 	}
 }
